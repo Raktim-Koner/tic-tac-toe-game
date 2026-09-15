@@ -11,6 +11,7 @@ const Game = ({ user }) => {
   const [inOnlineGame, setInOnlineGame] = useState(false);
   const [playerSymbol, setPlayerSymbol] = useState(null); 
   const [winningLine, setWinningLine] = useState(null);
+  const [roomAction, setRoomAction] = useState(null);
 
   // --- 1. REAL-TIME SYNC ---
   useEffect(() => {
@@ -35,40 +36,55 @@ const Game = ({ user }) => {
   const joinRoom = async () => {
     if (!roomCode.trim()) return alert("Please enter a room code!");
     const normalizedCode = roomCode.trim().toLowerCase();
-    
+
+    setRoomAction('join');
     try {
       const roomRef = doc(db, "rooms", normalizedCode);
       const roomSnap = await getDoc(roomRef);
 
       if (roomSnap.exists()) {
         setPlayerSymbol('O'); // Joiner is always O
+        setRoomCode(normalizedCode);
         setInOnlineGame(true); // This triggers the useEffect listener
       } else {
         alert("Room ID not found. Make sure your friend has created it first!");
       }
     } catch (err) {
       console.error("Join Error:", err);
+      alert(`Unable to join room: ${err.message}`);
+    } finally {
+      setRoomAction(null);
     }
   };
 
   const createRoom = async () => {
     if (!roomCode.trim()) return alert("Please enter a room code!");
     const normalizedCode = roomCode.trim().toLowerCase();
-    
-    setPlayerSymbol('X'); // Creator is always X
-    
-    const roomData = {
-      board: Array(9).fill(null),
-      turn: 'X',
-      winningLine: null,
-      creator: user.uid
-    };
 
+    setRoomAction('create');
     try {
-      await setDoc(doc(db, "rooms", normalizedCode), roomData);
+      const roomRef = doc(db, "rooms", normalizedCode);
+      const roomSnap = await getDoc(roomRef);
+
+      if (roomSnap.exists()) {
+        alert("That room already exists. Choose another room ID or join it.");
+        return;
+      }
+
+      await setDoc(roomRef, {
+        board: Array(9).fill(null),
+        turn: 'X',
+        winningLine: null,
+        creator: user.uid
+      });
+      setRoomCode(normalizedCode);
+      setPlayerSymbol('X'); // Creator is X only after the room is created
       setInOnlineGame(true);
     } catch (err) {
-      alert("Error creating room. Check your Firebase Rules!");
+      console.error("Create Error:", err);
+      alert(`Unable to create room: ${err.message}`);
+    } finally {
+      setRoomAction(null);
     }
   };
 
@@ -146,8 +162,12 @@ const Game = ({ user }) => {
           value={roomCode} onChange={(e) => setRoomCode(e.target.value)} 
         />
         <div className="flex gap-4">
-          <button onClick={createRoom} className="flex-1 bg-green-600 p-3 rounded-xl font-bold">CREATE</button>
-          <button onClick={joinRoom} className="flex-1 bg-blue-600 p-3 rounded-xl font-bold">JOIN</button>
+          <button onClick={createRoom} disabled={roomAction !== null} className="flex-1 bg-green-600 p-3 rounded-xl font-bold disabled:opacity-50">
+            {roomAction === 'create' ? 'CREATING...' : 'CREATE'}
+          </button>
+          <button onClick={joinRoom} disabled={roomAction !== null} className="flex-1 bg-blue-600 p-3 rounded-xl font-bold disabled:opacity-50">
+            {roomAction === 'join' ? 'JOINING...' : 'JOIN'}
+          </button>
         </div>
         <button onClick={() => setMode(null)} className="text-gray-500 underline text-sm mt-2">Go Back</button>
       </div>
